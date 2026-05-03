@@ -1,63 +1,92 @@
 @echo off
 setlocal enabledelayedexpansion
-title Adobe Connect Full Merger (All Parts)
+title Adobe Connect Universal Merger
 echo ===================================================
-echo  Merging ALL screenshare and cameraVoip parts
+echo  Universal Adobe Connect to MP4 Converter
+echo  (Finds ANY video/audio .flv files)
 echo ===================================================
 echo.
 
-:: 1. Collect and sort video files (screenshare_x_y.flv)
+:: -----------------------------------------------------
+:: 1. Collect ALL video files (screenshare/screenshot/mainstream)
+:: -----------------------------------------------------
 set video_list=_video_list.txt
 if exist %video_list% del %video_list%
-for /f "delims=" %%f in ('dir /b screenshare_*.flv 2^>nul') do (
+set video_temp=_video_temp.txt
+if exist %video_temp% del %video_temp%
+
+for %%f in (*screenshare*.flv *screenshot*.flv *mainstream*.flv) do (
+    :: Try to extract two numbers from filename (pattern *_x_y.flv)
+    set "name=%%f"
+    set num1=0
+    set num2=0
     for /f "tokens=2,3 delims=_." %%a in ("%%f") do (
-        set "num1=%%a"
-        set "num2=%%b"
-        :: Remove leading zeros
-        for /f "tokens=* delims=0" %%c in ("!num1!") do set "num1=%%c"
-        for /f "tokens=* delims=0" %%c in ("!num2!") do set "num2=%%c"
-        if "!num1!"=="" set num1=0
-        if "!num2!"=="" set num2=0
-        echo !num1! !num2! %%f >> _video_temp.txt
+        set num1=%%a
+        set num2=%%b
     )
+    :: Remove leading zeros
+    for /f "tokens=* delims=0" %%c in ("!num1!") do set num1=%%c
+    for /f "tokens=* delims=0" %%c in ("!num2!") do set num2=%%c
+    if "!num1!"=="" set num1=0
+    if "!num2!"=="" set num2=0
+    echo !num1! !num2! %%f >> %video_temp%
 )
-if not exist _video_temp.txt (
-    echo No screenshare .flv files found!
+
+if not exist %video_temp% (
+    echo No video .flv files found!
     pause
     exit /b
 )
-sort _video_temp.txt /o _video_sorted.txt
-for /f "tokens=3,*" %%a in (_video_sorted.txt) do (
-    echo file '%%a' >> %video_list%
-)
-del _video_temp.txt _video_sorted.txt
+sort %video_temp% /o %video_list%
+del %video_temp%
 
-:: 2. Collect and sort audio files (cameraVoip_x_y.flv)
+:: Create ffmpeg concat file from sorted video list
+> %video_list% (
+    for /f "tokens=3,*" %%a in (%video_list%) do (
+        echo file '%%a'
+    )
+)
+
+:: -----------------------------------------------------
+:: 2. Collect ALL audio files (cameraVoip_*.flv)
+:: -----------------------------------------------------
 set audio_list=_audio_list.txt
 if exist %audio_list% del %audio_list%
-for /f "delims=" %%f in ('dir /b cameraVoip_*.flv 2^>nul') do (
+set audio_temp=_audio_temp.txt
+if exist %audio_temp% del %audio_temp%
+
+for %%f in (*cameraVoip*.flv) do (
+    set "name=%%f"
+    set num1=0
+    set num2=0
     for /f "tokens=2,3 delims=_." %%a in ("%%f") do (
-        set "num1=%%a"
-        set "num2=%%b"
-        for /f "tokens=* delims=0" %%c in ("!num1!") do set "num1=%%c"
-        for /f "tokens=* delims=0" %%c in ("!num2!") do set "num2=%%c"
-        if "!num1!"=="" set num1=0
-        if "!num2!"=="" set num2=0
-        echo !num1! !num2! %%f >> _audio_temp.txt
+        set num1=%%a
+        set num2=%%b
     )
+    for /f "tokens=* delims=0" %%c in ("!num1!") do set num1=%%c
+    for /f "tokens=* delims=0" %%c in ("!num2!") do set num2=%%c
+    if "!num1!"=="" set num1=0
+    if "!num2!"=="" set num2=0
+    echo !num1! !num2! %%f >> %audio_temp%
 )
-if not exist _audio_temp.txt (
-    echo No cameraVoip .flv files found!
+
+if not exist %audio_temp% (
+    echo No audio .flv files found!
     pause
     exit /b
 )
-sort _audio_temp.txt /o _audio_sorted.txt
-for /f "tokens=3,*" %%a in (_audio_sorted.txt) do (
-    echo file '%%a' >> %audio_list%
-)
-del _audio_temp.txt _audio_sorted.txt
+sort %audio_temp% /o %audio_list%
+del %audio_temp%
 
+> %audio_list% (
+    for /f "tokens=3,*" %%a in (%audio_list%) do (
+        echo file '%%a'
+    )
+)
+
+:: -----------------------------------------------------
 :: 3. User selects quality and frame rate
+:: -----------------------------------------------------
 echo.
 echo Select output quality:
 echo   1 - 480p  (854x480) - fast, small
@@ -86,7 +115,9 @@ if "%f%"=="4" set fps=60
 if "%f%"=="5" set fps=90
 if "%fps%"=="" set fps=30
 
-:: 4. Concatenate video files
+:: -----------------------------------------------------
+:: 4. Concatenate all video parts
+:: -----------------------------------------------------
 echo.
 echo Merging video parts...
 if exist ".\ffmpeg.exe" (
@@ -96,7 +127,9 @@ if exist ".\ffmpeg.exe" (
 )
 if %errorlevel% neq 0 goto error
 
-:: 5. Concatenate audio files
+:: -----------------------------------------------------
+:: 5. Concatenate all audio parts
+:: -----------------------------------------------------
 echo Merging audio parts...
 if exist ".\ffmpeg.exe" (
     .\ffmpeg.exe -f concat -safe 0 -i %audio_list% -c copy audio_merged.flv
@@ -105,7 +138,9 @@ if exist ".\ffmpeg.exe" (
 )
 if %errorlevel% neq 0 goto error
 
+:: -----------------------------------------------------
 :: 6. Final conversion to MP4
+:: -----------------------------------------------------
 echo.
 echo Creating final MP4...
 if exist ".\ffmpeg.exe" (
@@ -115,7 +150,9 @@ if exist ".\ffmpeg.exe" (
 )
 if %errorlevel% neq 0 goto error
 
-:: 7. Cleanup and success
+:: -----------------------------------------------------
+:: 7. Cleanup temporary files
+:: -----------------------------------------------------
 del video_merged.flv audio_merged.flv %video_list% %audio_list% 2>nul
 echo.
 echo ===================================================
